@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GE PET/CT Protocol Simulator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Custom Tailwind Configuration to simulate GE-like colors -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'ge-dark': '#212A34',
+                        'ge-panel': '#364555',
+                        'ge-highlight': '#FACC15', // Bright Yellow for active buttons
+                        'ge-active': '#4C73C1', // Muted blue for active states
+                        'ge-error': '#EF4444', // Bright Red for errors
+                        'ge-label': '#A0B3C8',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* General look and feel */
+        body {
+            background-color: #171E27;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            padding: 1rem;
+            min-height: 100vh;
+        }
+        /* Custom scrollbar to match dark theme */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #556070;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background-color: #212A34;
+        }
+        /* Style for the input fields in the grid */
+        .grid-input {
+            appearance: none;
+            background-color: #2A3644;
+            color: white;
+            border: 1px solid #556070;
+            padding: 0.25rem 0.5rem;
+            text-align: center;
+            height: 100%;
+            width: 100%;
+            border-radius: 4px;
+            transition: all 0.15s;
+        }
+        .grid-input:focus {
+            border-color: #4C73C1;
+            outline: none;
+        }
+        /* Specific style for error state */
+        .grid-input.error {
+            background-color: #550000;
+            border-color: #EF4444;
+        }
+        .grid-header-cell {
+            background-color: #445566;
+            color: white;
+            padding: 0.5rem 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-align: center;
+            border-right: 1px solid #556070;
+        }
+        /* Custom button style for the bottom control panel */
+        .ctrl-btn {
+            background-color: #445566;
+            color: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: all 0.1s;
+            box-shadow: 0 3px #212A34;
+            border-bottom: 2px solid #212A34;
+            line-height: 1;
+        }
+        .ctrl-btn:hover {
+            background-color: #556070;
+        }
+        .ctrl-btn:active {
+            box-shadow: 0 1px #212A34;
+            transform: translateY(2px);
+        }
+        .pet-ct-toggle {
+            height: 5rem;
+            width: 5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 800;
+            border-radius: 8px;
+            border: 3px solid #666;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div id="app" class="max-w-7xl mx-auto bg-ge-dark rounded-xl shadow-2xl p-4 md:p-6 space-y-4">
+        <!-- HEADER/INFO ROW -->
+        <div class="grid grid-cols-12 gap-4">
+            <!-- Patient / Anatomical Info Panel (Col 1-3) -->
+            <div class="col-span-12 lg:col-span-3 bg-ge-panel p-3 rounded-lg space-y-2">
+                <h3 class="text-sm font-bold text-ge-label uppercase">Patient / Protocol</h3>
+                <div class="flex flex-wrap gap-2 text-xs">
+                    <button class="px-2 py-1 bg-ge-active rounded text-white font-medium">VX</button>
+                    <button class="px-2 py-1 bg-ge-panel border border-ge-label rounded text-ge-label hover:bg-ge-dark">AutoFilm Setup</button>
+                </div>
+                <div class="text-xs space-y-1">
+                    <p><span class="text-ge-label">Patient Orientation:</span> Feet First</p>
+                    <p><span class="text-ge-label">Patient Position:</span> <span class="text-ge-highlight">Supine</span></p>
+                    <p><span class="text-ge-label">PET Start:</span> <input type="text" value="S0.000" class="grid-input w-24 h-6 text-xs inline-block text-center"></p>
+                    <p><span class="text-ge-label">PET End:</span> <input type="text" value="H1019.200" class="grid-input w-24 h-6 text-xs inline-block text-center"></p>
+                </div>
+            </div>
+
+            <!-- CT/PET Control Buttons (Col 4-9) -->
+            <div class="col-span-12 lg:col-span-6 bg-ge-panel p-3 rounded-lg flex flex-wrap gap-2 justify-center items-start">
+                <button class="px-4 py-2 bg-ge-panel border border-ge-label rounded text-ge-label hover:bg-ge-dark">Red Rx</button>
+                <button class="px-4 py-2 bg-ge-panel border border-ge-label rounded text-ge-label hover:bg-ge-dark">Show Localizer</button>
+                <button class="px-4 py-2 bg-ge-highlight rounded text-ge-dark font-semibold shadow-md hover:opacity-90">Preview</button>
+                <button class="px-4 py-2 bg-ge-active rounded text-white font-semibold shadow-md hover:bg-blue-700">Gating</button>
+            </div>
+
+            <!-- Dose/Metadata Info (Col 10-12) -->
+            <div id="dose-status-container" class="col-span-12 lg:col-span-3">
+                <!-- CT DOSE INFO (Visible by Default) -->
+                <div id="ct-dose-panel" class="bg-ge-panel p-3 rounded-lg text-xs space-y-1">
+                    <h3 class="text-sm font-bold text-ge-label uppercase">Dose & Physics</h3>
+                    <p><span class="text-ge-label">CTDVol (NV):</span> <span id="ctdvol">0.00</span> mGy</p>
+                    <p><span class="text-ge-label">Projected series DLP:</span> <span id="projectedDLP">0.00</span> mGy-cm</p>
+                    <p><span class="text-ge-label">Accumulated exam DLP:</span> <span id="accumulatedDLP">0.00</span> mGy-cm</p>
+                    <div class="pt-2">
+                        <p class="text-ge-label">Phantom:</p>
+                        <p class="text-white font-medium text-lg">Body 32</p>
+                    </div>
+                </div>
+
+                <!-- PET SCAN STATUS (Hidden by Default) -->
+                <div id="pet-status-panel" class="bg-ge-panel p-3 rounded-lg text-xs space-y-2 hidden h-full">
+                    <h3 class="text-sm font-bold text-ge-label uppercase">PET Scan Status</h3>
+                    <p class="text-ge-label">Scan Time Remaining</p>
+                    <p class="text-5xl font-mono text-ge-highlight text-center py-2">00:07:30</p>
+                    <p class="text-ge-label">System Countrate (kcps)</p>
+                    <p class="text-3xl font-mono text-white text-center">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROTOCOL GRID AREA -->
+        <!-- This container now holds the main grid and the PET activity panel side-by-side -->
+        <div id="protocol-area-wrapper" class="grid lg:grid-cols-12 gap-2"> 
+            
+            <!-- MAIN GRID (Takes 12 columns in CT mode, 9 in PET mode) -->
+            <div id="protocol-grid-container" class="col-span-12 bg-ge-panel rounded-lg overflow-hidden border border-ge-active">
+                <!-- Grid Header -->
+                <div id="protocol-grid-header" class="grid text-xs">
+                    <!-- Headers generated by JS -->
+                </div>
+                <!-- Grid Body -->
+                <div id="protocol-grid-body" class="custom-scrollbar max-h-[300px] overflow-y-auto divide-y divide-ge-dark">
+                    <!-- Protocol rows will be inserted here by JavaScript -->
+                </div>
+            </div>
+            
+            <!-- RADIONUCLIDE ACTIVITY PANEL (Hidden in CT mode) -->
+            <div id="pet-activity-panel" class="col-span-12 lg:col-span-3 bg-ge-panel rounded-lg p-3 space-y-4 hidden">
+                <h3 class="text-sm font-bold text-ge-label uppercase">Radionuclide Activity</h3>
+                <div class="flex flex-col gap-1">
+                    <label class="text-ge-label text-xs">Dose</label>
+                    <input type="text" value="6.35 mCi" class="grid-input text-sm h-8">
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="text-ge-label text-xs">Nuclide / Tracer</label>
+                    <input type="text" value="18F - Fluorodeoxyglucose" class="grid-input text-sm h-8">
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ACTIONS & CONTROL BAR -->
+        <div class="grid grid-cols-12 gap-4">
+            <!-- Left Actions -->
+            <div class="col-span-12 md:col-span-6 flex flex-wrap gap-2 items-center">
+                <button onclick="addSeries()" class="ctrl-btn bg-ge-active hover:bg-blue-700">Add Group</button>
+                <button onclick="deleteSelectedSeries()" class="ctrl-btn">Delete Selected Group</button>
+                <button class="ctrl-btn">Reset Series</button>
+                <button class="ctrl-btn">Create New Series</button>
+                <button class="ctrl-btn">Repeat Series</button>
+            </div>
+            
+            <!-- Right Controls -->
+            <div class="col-span-12 md:col-span-6 flex justify-end items-center gap-4">
+                <button onclick="setModality('CT')" id="btn-ct" class="pet-ct-toggle">CT</button>
+                <button onclick="setModality('PET')" id="btn-pet" class="pet-ct-toggle">PET</button>
+                <div class="flex items-center space-x-2">
+                    <button class="ctrl-btn bg-ge-active text-lg px-6">Auto Scan</button>
+                    <!-- Simulated Arrow Icon -->
+                    <div class="w-12 h-12 flex items-center justify-center rounded-full bg-ge-highlight text-ge-dark font-extrabold text-xl shadow-lg">
+                        &rarr;
+                    </div>
+                </div>
+                <button class="ctrl-btn bg-ge-highlight text-ge-dark font-bold text-lg px-6">Confirm</button>
+            </div>
+        </div>
+
+        <!-- BOTTOM NAV BAR (End Exam, R1-R9, etc.) -->
+        <div class="flex flex-wrap gap-2 pt-2 border-t border-ge-panel justify-between">
+            <div class="flex gap-2">
+                <button class="ctrl-btn bg-red-700 hover:bg-red-800">End Exam</button>
+                <button class="ctrl-btn bg-ge-active hover:bg-blue-700">Select New Protocol</button>
+            </div>
+            <div class="flex gap-2 text-sm">
+                <button class="ctrl-btn w-10">R1</button>
+                <button class="ctrl-btn w-10">R2</button>
+                <button class="ctrl-btn w-10">R3</button>
+                <button class="ctrl-btn w-10">R4</button>
+                <button class="ctrl-btn w-10">R5</button>
+                <button class="ctrl-btn w-10">R6</button>
+                <button class="ctrl-btn w-10">R7</button>
+                <button class="ctrl-btn w-10">R8</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const gridContainer = document.getElementById('protocol-grid-container');
+        const gridHeader = document.getElementById('protocol-grid-header');
+        const gridBody = document.getElementById('protocol-grid-body');
+        const petActivityPanel = document.getElementById('pet-activity-panel');
+        const ctDosePanel = document.getElementById('ct-dose-panel');
+        const petStatusPanel = document.getElementById('pet-status-panel');
+        const btnCt = document.getElementById('btn-ct');
+        const btnPet = document.getElementById('btn-pet');
+
+        let currentId = 1;
+        
+        // Initial state mimicking the scanner data
+        let protocolState = {
+            modality: 'CT',
+            series: [
+                {
+                    id: currentId++,
+                    // CT Fields
+                    scanType: 'Helical',
+                    startLocation: '-40.000',
+                    endLocation: '1519.288',
+                    images: '365',
+                    thick: '3.75',
+                    speed: '0.97:1',
+                    kV: '120',
+                    mA: '500',
+                    dfov: '70.0',
+                    rlCenter: '0.0',
+                    apCenter: '0.0',
+                    reconType: 'Std',
+                    matrix: '512',
+                    reconOption: 'Full A(Q)F40 A(F)B80',
+                    autoApps: 'Off',
+                    // PET Fields (hidden, but present for data consistency)
+                    scanDirection: 'Towards Feet',
+                    noBedPositions: '5',
+                    preScanDelay: '20:00',
+                    scanTime: '00:07:30',
+                    startOnCountRate: '0',
+                    stopOnCountRate: '0',
+                    autoCntAcq: 'N',
+
+                    isValid: true,
+                    isSelected: true
+                }
+            ]
+        };
+
+        // Static configuration options for dropdowns
+        const config = {
+            ctScanTypes: ['Helical', 'Axial', 'Cine', 'Scout'],
+            petScanTypes: ['Static', 'VIP On/Off'],
+            scanDirections: ['Toward Head', 'Toward Feet'],
+            reconOptions: ['Standard', 'Full A(Q)F40 A(F)B80', 'Bone Plus', 'Lung'],
+            matrices: ['512', '256', '1024'],
+        };
+
+        const ctFieldsConfig = [
+            { key: 'id', header: '#', type: 'label', size: '0.5fr' },
+            { key: 'scanType', header: 'Scan Type', type: 'select', options: config.ctScanTypes, size: '1fr', isRequired: true },
+            { key: 'startLocation', header: 'Start Location', type: 'text', size: '1fr', isRequired: true, default: '-40.000' },
+            { key: 'endLocation', header: 'End Location', type: 'text', size: '1fr', isRequired: true, default: '1019.288' },
+            { key: 'images', header: 'Images', type: 'text', size: '0.7fr', default: '365' },
+            { key: 'thick', header: 'Thick', type: 'text', size: '0.7fr', default: '3.75' },
+            { key: 'speed', header: 'Speed', type: 'text', size: '0.7fr', default: '0.97:1' },
+            { key: 'kV', header: 'kV', type: 'text', size: '0.7fr', default: '120' },
+            { key: 'mA', header: 'mA', type: 'text', size: '0.7fr', isRequired: true, default: '500' },
+            { key: 'dfov', header: 'DFOV (cm)', type: 'text', size: '1fr', default: '70.0' },
+            { key: 'rlCenter', header: 'R/L Center (mm)', type: 'text', size: '1fr', default: '0.0' },
+            { key: 'apCenter', header: 'A/P Center (mm)', type: 'text', size: '1fr', default: '0.0' },
+            { key: 'reconOption', header: 'Recon Option', type: 'select', options: config.reconOptions, size: '1.5fr', default: 'Full A(Q)F40 A(F)B80' },
+            { key: 'reconType', header: 'Recon Type', type: 'text', size: '1fr', default: 'Std' },
+            { key: 'matrix', header: 'Matrix', type: 'select', options: config.matrices, size: '1fr', default: '512' },
+            { key: 'autoApps', header: 'Auto Apps', type: 'text', size: '1fr', default: 'Off' },
+        ];
+
+        const petFieldsConfig = [
+            { key: 'id', header: '#', type: 'label', size: '0.5fr' },
+            { key: 'scanType', header: 'Scan Type', type: 'select', options: config.petScanTypes, size: '1fr', isRequired: true },
+            { key: 'startLocation', header: 'Start Location', type: 'text', size: '1fr', isRequired: true, default: 'S0.000' },
+            { key: 'endLocation', header: 'End Location', type: 'text', size: '1fr', isRequired: true, default: 'H1019.200' },
+            { key: 'scanDirection', header: 'Scan Direction', type: 'select', options: config.scanDirections, size: '1fr', default: 'Towards Feet' },
+            { key: 'noBedPositions', header: 'No. Bed Positions', type: 'text', size: '1fr', default: '5' },
+            { key: 'preScanDelay', header: 'Pre-Scan Delay', type: 'text', size: '1fr', default: '20:00' },
+            { key: 'scanTime', header: 'Scan Time', type: 'text', size: '1fr', default: '00:07:30' },
+            { key: 'startOnCountRate', header: 'Start on Count Rate', type: 'text', size: '1fr', default: '0' },
+            { key: 'stopOnCountRate', header: 'Stop on Count Rate', type: 'text', size: '1fr', default: '0' },
+            { key: 'autoCntAcq', header: 'Auto Cnt/Acq', type: 'text', size: '1fr', default: 'N' },
+            // Placeholder for grid alignment (2.5fr to match overall width)
+            { key: 'images', header: 'Images', type: 'text', size: '1fr', default: '1-365' }, 
+            { key: 'overlap', header: 'Overlap', type: 'text', size: '0.5fr', default: '50' }, 
+        ];
+
+
+        /**
+         * Renders the entire scan protocol grid based on the protocolState.
+         */
+        function renderProtocolGrid() {
+            gridBody.innerHTML = '';
+            
+            const isCT = protocolState.modality === 'CT';
+            const fieldsConfig = isCT ? ctFieldsConfig : petFieldsConfig;
+            
+            // 1. Update Grid/Panel Layout
+            if (isCT) {
+                gridContainer.classList.remove('lg:col-span-9');
+                gridContainer.classList.add('lg:col-span-12');
+                petActivityPanel.classList.add('hidden');
+                ctDosePanel.classList.remove('hidden');
+                petStatusPanel.classList.add('hidden');
+
+            } else {
+                gridContainer.classList.remove('lg:col-span-12');
+                gridContainer.classList.add('lg:col-span-9');
+                petActivityPanel.classList.remove('hidden');
+                ctDosePanel.classList.add('hidden');
+                petStatusPanel.classList.remove('hidden');
+            }
+            
+            // 2. Build Grid Header
+            let gridTemplateColumns = '';
+            gridHeader.innerHTML = '';
+
+            fieldsConfig.forEach(field => {
+                const headerCell = document.createElement('div');
+                headerCell.className = 'grid-header-cell';
+                headerCell.textContent = field.header;
+                gridHeader.appendChild(headerCell);
+                gridTemplateColumns += `${field.size} `;
+            });
+            gridHeader.style.cssText = `grid-template-columns: ${gridTemplateColumns.trim()};`;
+
+
+            // 3. Render Grid Body Rows
+            protocolState.series.forEach(series => {
+                const row = document.createElement('div');
+                row.className = `grid py-1 ${series.isSelected ? 'bg-ge-active/30' : 'hover:bg-ge-panel/50'}`;
+                row.style.cssText = `grid-template-columns: ${gridTemplateColumns.trim()};`;
+                row.onclick = () => selectSeries(series.id);
+
+                fieldsConfig.forEach(field => {
+                    // Skip rendering fields that don't apply to the current series (e.g., if a PET series is active in CT mode)
+                    if (isCT && !series.thick) { /* Simple check to avoid errors if data is mixed */ }
+
+                    const cell = document.createElement('div');
+                    cell.className = 'flex items-center justify-center p-1 text-xs h-full';
+                    const displayValue = series[field.key] || '';
+                    
+                    // Check if field is required AND empty (simulating error highlighting)
+                    const isError = field.isRequired && displayValue.toString().trim() === '';
+
+                    if (field.type === 'label') {
+                        cell.innerHTML = `<span class="text-ge-highlight font-bold">${displayValue}</span>`;
+                    } else if (field.type === 'select') {
+                        const select = document.createElement('select');
+                        select.className = `grid-input h-6 text-xs ${isError ? 'error' : ''}`;
+                        select.id = `input-${series.id}-${field.key}`;
+                        select.onchange = (e) => updateSeriesValue(series.id, field.key, e.target.value);
+                        
+                        field.options.forEach(option => {
+                            const opt = document.createElement('option');
+                            opt.value = option;
+                            opt.textContent = option;
+                            if (option === displayValue) {
+                                opt.selected = true;
+                            }
+                            select.appendChild(opt);
+                        });
+                        cell.appendChild(select);
+                    } else { // type: 'text'
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.value = displayValue;
+                        input.className = `grid-input h-6 text-xs ${isError ? 'error' : ''}`;
+                        input.id = `input-${series.id}-${field.key}`;
+                        input.onchange = (e) => updateSeriesValue(series.id, field.key, e.target.value);
+                        cell.appendChild(input);
+                    }
+                    row.appendChild(cell);
+                });
+                
+                gridBody.appendChild(row);
+            });
+            updateModalityButtons();
+        }
+
+        /**
+         * Updates a value in the protocol state for a specific series.
+         */
+        function updateSeriesValue(id, key, value) {
+            const seriesIndex = protocolState.series.findIndex(s => s.id === id);
+            if (seriesIndex !== -1) {
+                protocolState.series[seriesIndex][key] = value;
+                
+                // Simple validation check: re-render to update error highlighting
+                const fieldsConfig = protocolState.modality === 'CT' ? ctFieldsConfig : petFieldsConfig;
+                const field = fieldsConfig.find(f => f.key === key);
+
+                if (field && field.isRequired) {
+                    const inputElement = document.getElementById(`input-${id}-${key}`);
+                    if (value.toString().trim() === '') {
+                        inputElement.classList.add('error');
+                    } else {
+                        inputElement.classList.remove('error');
+                    }
+                }
+                
+                // If a value changes, deselect all other rows for visual focus
+                protocolState.series = protocolState.series.map(s => ({
+                    ...s,
+                    isSelected: s.id === id
+                }));
+
+                // Re-render to ensure consistency across the UI
+                renderProtocolGrid();
+            }
+        }
+
+        /**
+         * Selects a series for editing/deletion.
+         */
+        function selectSeries(id) {
+            protocolState.series = protocolState.series.map(s => ({
+                ...s,
+                isSelected: s.id === id
+            }));
+            renderProtocolGrid();
+        }
+
+        /**
+         * Adds a new default series to the protocol based on the current modality.
+         */
+        function addSeries() {
+            currentId++;
+            const isCT = protocolState.modality === 'CT';
+            const fieldsConfig = isCT ? ctFieldsConfig : petFieldsConfig;
+            
+            const newSeries = { id: currentId, isSelected: true };
+
+            fieldsConfig.forEach(field => {
+                newSeries[field.key] = field.default || (field.isRequired ? '' : '---');
+            });
+            
+            // Deselect existing series
+            protocolState.series = protocolState.series.map(s => ({ ...s, isSelected: false }));
+            
+            protocolState.series.push(newSeries);
+            renderProtocolGrid();
+            // Scroll to the bottom to view the new series
+            gridBody.scrollTop = gridBody.scrollHeight;
+        }
+
+        /**
+         * Deletes the currently selected series.
+         */
+        function deleteSelectedSeries() {
+            const selectedIndex = protocolState.series.findIndex(s => s.isSelected);
+            if (selectedIndex !== -1) {
+                protocolState.series.splice(selectedIndex, 1);
+                
+                // Select the next series if one exists
+                if (protocolState.series.length > 0) {
+                    const newSelectedIndex = Math.min(selectedIndex, protocolState.series.length - 1);
+                    protocolState.series[newSelectedIndex].isSelected = true;
+                }
+                renderProtocolGrid();
+            }
+        }
+
+        /**
+         * Toggles the main modality (CT/PET).
+         */
+        function setModality(modality) {
+            protocolState.modality = modality;
+            renderProtocolGrid();
+            updateModalityButtons();
+        }
+
+        /**
+         * Visually updates the CT/PET toggle buttons.
+         */
+        function updateModalityButtons() {
+            [btnCt, btnPet].forEach(btn => {
+                if (btn) {
+                    const btnModality = btn.id === 'btn-ct' ? 'CT' : 'PET';
+                    if (protocolState.modality === btnModality) {
+                        btn.classList.add('bg-ge-highlight', 'text-ge-dark', 'border-ge-highlight');
+                        btn.classList.remove('bg-blue-700', 'text-white', 'border-blue-900');
+                    } else {
+                        btn.classList.remove('bg-ge-highlight', 'text-ge-dark', 'border-ge-highlight');
+                        btn.classList.add('bg-blue-700', 'text-white', 'border-blue-900');
+                    }
+                }
+            });
+        }
+
+
+        // Initialize the app when the script loads
+        document.addEventListener('DOMContentLoaded', () => {
+            renderProtocolGrid();
+        });
+
+    </script>
+</body>
+</html>
